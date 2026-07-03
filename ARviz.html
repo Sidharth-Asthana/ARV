@@ -55,6 +55,7 @@
   .brand{display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;}
   .brand b{font-size:15px; font-weight:650; letter-spacing:.02em;}
   .brand span{font-size:11px; color:var(--muted);}
+  #follow{margin-left:auto; font-variant-numeric:tabular-nums;}
   .lbl{font-size:10px; text-transform:uppercase; letter-spacing:.14em; color:var(--muted); margin-bottom:7px;}
   .row{display:flex; gap:8px; flex-wrap:wrap;}
   .chip{
@@ -106,7 +107,7 @@
 </div>
 
 <div id="sheet">
-  <div class="brand"><b>ARviz</b><span id="hint">tap the scene to interact</span></div>
+  <div class="brand"><b>ARviz</b><span id="hint">tap the scene to interact</span><span id="follow"></span></div>
   <div>
     <div class="lbl">Mode</div>
     <div class="row" id="modeRow"></div>
@@ -153,6 +154,14 @@ function toast(msg){
   const t=$('#toast'); t.textContent=msg; t.classList.add('show');
   clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'),2600);
 }
+/* rate-limited haptics shared by every interaction */
+let lastBuzz=0;
+function buzz(pattern){
+  const n=performance.now();
+  if(n-lastBuzz<70)return;
+  lastBuzz=n;
+  if(navigator.vibrate)try{navigator.vibrate(pattern);}catch(_){}
+}
 
 /* =============== color cycles ===============
    each scheme is an explicit color list; entities cycle smoothly
@@ -184,9 +193,8 @@ function colorAt(f,t,alpha){       // f = entity offset 0..1, cycles with time
 
 /* =============== sceneries ===============
    the static painting goes on a background canvas once; each scenery
-   also has an ambient() layer drawn live every frame (twinkling stars,
-   drifting aurora, flickering windows) plus the zone the visualization
-   lives in, a focal point, and a default palette. */
+   also has an ambient() layer drawn live every frame — kept faint so
+   it feels alive without competing with the visualizer. */
 function lcg(seed){ let s=seed>>>0||1; return ()=>((s=s*1664525+1013904223>>>0)/4294967296); }
 function ridge(c,w,h,yFrac,ampFrac,color,seed,pts=48){
   const R=lcg(seed), a=R()*6, b=R()*6, f1=1.2+R()*1.6, f2=3+R()*3;
@@ -199,11 +207,11 @@ function ridge(c,w,h,yFrac,ampFrac,color,seed,pts=48){
   }
   c.lineTo(w+2,h+2); c.closePath(); c.fill();
 }
-function twinkle(c,t,w,h,yMax,n,seed,alpha){
+function twinkle(c,t,w,h,yMax,n,seed,alpha,col='226,232,255'){
   const R=lcg(seed);
   for(let i=0;i<n;i++){
     const x=R()*w, y=R()*h*yMax, r=.4+R()*1.1, base=.25+R()*.5, sp=.4+R()*1.6, ph=R()*7;
-    c.fillStyle=`rgba(226,232,255,${alpha*base*(.55+.45*Math.sin(t*sp+ph))})`;
+    c.fillStyle=`rgba(${col},${alpha*base*(.55+.45*Math.sin(t*sp+ph))})`;
     c.beginPath(); c.arc(x,y,r,0,7); c.fill();
   }
 }
@@ -234,6 +242,17 @@ function auroraRibbons(c,t,w,h){
     c.closePath(); c.fill();
   }
 }
+function shootingStar(c,t,w,h,period,seed){
+  const cyc=Math.floor(t/period), ph=(t%period)/period;
+  if(ph>.06)return;
+  const R=lcg(seed+cyc), p=ph/.06;
+  const x0=w*(.1+R()*.7), y0=h*(.06+R()*.2);
+  const x=x0+p*w*.16, y=y0+p*h*.07;
+  const g=c.createLinearGradient(x,y,x-w*.05,y-h*.022);
+  g.addColorStop(0,`rgba(235,240,255,${.7*(1-p)})`); g.addColorStop(1,'rgba(235,240,255,0)');
+  c.strokeStyle=g; c.lineWidth=1.4; c.lineCap='round';
+  c.beginPath(); c.moveTo(x,y); c.lineTo(x-w*.05,y-h*.022); c.stroke();
+}
 const SCENERIES=[
   {name:'Night Peaks', light:false, z0:.10, z1:.58, fx:.5, fy:.34, defPal:'Aurora',
    draw(c,w,h){
@@ -241,7 +260,10 @@ const SCENERIES=[
      ridge(c,w,h,.80,.10,'#0a0c17',21);
      ridge(c,w,h,.88,.07,'#060712',22);
    },
-   ambient(c,t,w,h){ twinkle(c,t,w,h,.55,Math.round(w*h/9000),7,1); }},
+   ambient(c,t,w,h){
+     twinkle(c,t,w,h,.55,Math.round(w*h/9000),7,1);
+     shootingStar(c,t,w,h,9,101);
+   }},
   {name:'Moonlit Sea', light:false, z0:.42, z1:.78, fx:.72, fy:.26, defPal:'Ocean',
    draw(c,w,h){
      vGrad(c,w,h,[[0,'#08111f'],[.6,'#0a1524'],[.62,'#061019'],[1,'#03080e']]);
@@ -250,6 +272,9 @@ const SCENERIES=[
    },
    ambient(c,t,w,h){
      twinkle(c,t,w,h,.5,Math.round(w*h/14000),11,.8);
+     const cx=((t*5)%(w*1.5))-w*.25;   // cloud wisp drifting past the moon
+     glow(c,cx,h*.21,h*.09,'rgba(200,212,238,.05)');
+     glow(c,cx+w*.08,h*.24,h*.07,'rgba(200,212,238,.04)');
      for(let i=0;i<7;i++){ // moon glint shimmering on the water
        const y=h*(.64+i*.045), sh=.5+.5*Math.sin(t*(1+i*.31)+i*2.6);
        c.fillStyle=`rgba(210,225,250,${.14*sh*(1-i/8)})`;
@@ -266,8 +291,9 @@ const SCENERIES=[
      ridge(c,w,h,.78,.05,'#170a0d',31,32);
      ridge(c,w,h,.87,.05,'#0c0508',32,32);
    },
-   ambient(c,t,w,h){ // the dusk glow slowly breathes
+   ambient(c,t,w,h){ // the dusk glow slowly breathes; drifting dust motes
      glow(c,w*.5,h*.66,h*(.26+.04*Math.sin(t*.6)),`rgba(255,140,60,${.10+.05*Math.sin(t*.6)})`);
+     twinkle(c,t*.6,w,h,.7,10,33,.35,'255,190,130');
    }},
   {name:'Aurora Pines', light:false, z0:.08, z1:.52, fx:.5, fy:.30, defPal:'Aurora',
    draw(c,w,h){
@@ -307,6 +333,77 @@ const SCENERIES=[
        c.fillRect(x,y,1.3,1.8);
      }
    }},
+  {name:'Forest Glade', light:false, z0:.12, z1:.62, fx:.5, fy:.40, defPal:'Aurora',
+   draw(c,w,h){
+     vGrad(c,w,h,[[0,'#06130c'],[.7,'#04100a'],[1,'#020806']]);
+     const R=lcg(71);
+     for(let i=0;i<6;i++){ // rounded tree trunks at the glade's edge
+       const tx=w*(.04+i*.17+R()*.06), tw=w*(.018+R()*.02), th=h*(.5+R()*.25);
+       c.fillStyle=i%2?'#031008':'#040d09';
+       c.beginPath();
+       (c.roundRect?c.roundRect(tx,h-th,tw,th+4,tw*.5):c.rect(tx,h-th,tw,th+4));
+       c.fill();
+     }
+     ridge(c,w,h,.86,.05,'#03100a',72,60);
+     ridge(c,w,h,.93,.04,'#020a06',73,60);
+   },
+   ambient(c,t,w,h){
+     for(let i=0;i<2;i++){ // fog banks sliding between the trunks
+       const x=((t*(4+i*2.5)+i*w*.7)%(w+w*.6))-w*.3;
+       glow(c,x,h*(.7+i*.1),h*.13,'rgba(170,215,190,.045)');
+     }
+     twinkle(c,t,w,h,.35,12,74,.5);                       // canopy starlight
+     twinkle(c,t*.8,w,h,.95,8,75,.4,'150,240,180');       // ground glints
+   }},
+  {name:'Sakura Dusk', light:false, z0:.16, z1:.60, fx:.32, fy:.54, defPal:'Candy',
+   draw(c,w,h){
+     vGrad(c,w,h,[[0,'#2a1430'],[.55,'#3d1d3b'],[.8,'#241224'],[1,'#150a16']]);
+     glow(c,w*.32,h*.7,h*.26,'rgba(255,150,170,.22)');
+     ridge(c,w,h,.84,.05,'#1a0d1c',81,40);
+     // blossom branch reaching in from the top right
+     const R=lcg(83);
+     c.strokeStyle='#160a16'; c.lineCap='round';
+     for(let b=0;b<3;b++){
+       c.lineWidth=(3-b)*2.2;
+       c.beginPath(); c.moveTo(w*1.02,h*(.02+b*.05));
+       c.quadraticCurveTo(w*(.8-b*.06),h*(.08+b*.06),w*(.62-b*.1),h*(.16+b*.05));
+       c.stroke();
+       for(let i=0;i<9;i++){
+         const fr=i/9, bx=w*(1.0-fr*(.38+b*.1)), by=h*(.03+b*.05+fr*(.12+b*.02))+R()*8-4;
+         c.fillStyle=`rgba(255,${168+R()*40|0},${195+R()*30|0},${.35+R()*.35})`;
+         c.beginPath(); c.arc(bx,by,1.6+R()*2.4,0,7); c.fill();
+       }
+     }
+   },
+   ambient(c,t,w,h){
+     glow(c,w*.32,h*.7,h*(.22+.03*Math.sin(t*.5)),'rgba(255,150,170,.10)');
+     const R=lcg(85);
+     for(let i=0;i<6;i++){ // stray petals sifting down from the branch
+       const sp=10+R()*12, ph=R()*h, x=(w*(.6+R()*.4)+Math.sin(t*.8+i*2)*w*.04);
+       const y=((t*sp+ph)%(h*1.1))-h*.05;
+       c.fillStyle=`rgba(255,180,205,${.28*(1-y/h)+.06})`;
+       c.beginPath(); c.ellipse(x,y,2.6,1.5,t+i,0,7); c.fill();
+     }
+   }},
+  {name:'Rainfall', light:false, z0:.12, z1:.60, fx:.5, fy:.35, defPal:'Ocean',
+   draw(c,w,h){
+     vGrad(c,w,h,[[0,'#0d1420'],[.6,'#111a29'],[1,'#080d15']]);
+     glow(c,w*.5,h*.2,h*.3,'rgba(150,175,215,.07)');
+     ridge(c,w,h,.80,.06,'#0a111c',91);
+     ridge(c,w,h,.89,.05,'#060b12',92);
+   },
+   ambient(c,t,w,h){
+     const R=lcg(95);
+     c.lineCap='round'; c.lineWidth=1;
+     for(let i=0;i<26;i++){ // soft rain, slanted with the wind
+       const sp=280+R()*220, x0=R()*w*1.1-w*.05, ph=R()*h, ln=7+R()*7;
+       const y=((t*sp+ph)%(h+40))-20;
+       c.strokeStyle=`rgba(170,192,222,${.06+R()*.07})`;
+       c.beginPath(); c.moveTo(x0,y); c.lineTo(x0-ln*.25,y+ln); c.stroke();
+     }
+     const lp=(t%17)/17; // a far-off sheet of lightning, rare and faint
+     if(lp<.025)glow(c,w*.7,h*.15,h*.4,`rgba(205,218,255,${.06*Math.sin(lp/.025*Math.PI)})`);
+   }},
   {name:'Morning Mist', light:true, z0:.20, z1:.62, fx:.68, fy:.30, defPal:'Ember',
    draw(c,w,h){
      vGrad(c,w,h,[[0,'#eef1f7'],[.6,'#dde4ef'],[1,'#c6d1e2']]);
@@ -338,17 +435,31 @@ function setScene(s){
 }
 
 /* =============== audio engine ===============
-   mic path: auto-gain keeps quiet and loud rooms comparable,
-   spectral flux + adaptive threshold finds beats, and a tempo grid
-   predicts the next beat so pulses stay on the groove even when a
-   hit is acoustically buried. */
+   the mic path listens per instrument group: onset detection runs
+   independently on drums (low), keys/strums (mid), and percussion
+   (high). A conductor scores each band for salience and rhythmic
+   regularity and elects a LEAD instrument — major reactions follow
+   the lead's beat, the runner-up only adds minor accents. Slow songs
+   lower the onset threshold (hear soft piano strokes) but soften the
+   reactions; fast songs demand hard hits and jolt harder. */
+const BAND_DEFS=[
+  {name:'drums',      lo:1,  hi:10,  floor:.012},
+  {name:'keys',       lo:10, hi:60,  floor:.008},
+  {name:'percussion', lo:60, hi:220, floor:.010},
+];
 const audio={
   mode:'demo', bass:0, mid:0, treb:0, level:0,
   onBeat:false, beatAmp:0, beatGlow:0, shimmer:0, onShimmer:false,
-  ac:null, an:null, buf:null, prev:null, lastBeat:0,
-  fluxHist:[], trebHist:[], lastShim:0,
+  ac:null, an:null, buf:null, prev:null, lastBeat:0, lastShim:0,
   ivs:[], bpm:118, energyAvg:.4, pace:.5, peak:.3,
+  bands:BAND_DEFS.map(b=>({...b,hist:[],sal:0,ivs:[],lastOn:-9,onset:false,strength:0})),
+  lead:0, second:1, evalAt:0,
 };
+function followLabel(){
+  $('#follow').textContent = audio.mode==='mic'
+    ? `following ${audio.bands[audio.lead].name} · ${Math.round(audio.bpm)} bpm`
+    : `demo beat · 118 bpm`;
+}
 async function startMic(){
   try{
     const stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false}});
@@ -359,8 +470,10 @@ async function startMic(){
     src.connect(audio.an);
     audio.buf=new Uint8Array(audio.an.frequencyBinCount);
     audio.prev=new Uint8Array(audio.an.frequencyBinCount);
-    audio.mode='mic'; audio.ivs.length=0; audio.fluxHist.length=0; audio.peak=.3;
+    audio.mode='mic'; audio.ivs.length=0; audio.peak=.3;
+    for(const bd of audio.bands){bd.hist.length=0; bd.ivs.length=0; bd.sal=0; bd.lastOn=-9;}
     toast('Listening — play YouTube Music out loud nearby');
+    followLabel();
     return true;
   }catch(e){
     toast('Microphone not available — demo beat continues');
@@ -372,7 +485,10 @@ function band(lo,hi){
   return s/((hi-lo)*255);
 }
 function registerBeat(t,amp){
-  audio.onBeat=true; audio.beatAmp=amp; audio.beatGlow=1;
+  // intensity rides pace: gentle swells on slow songs, hard jolts on fast ones
+  audio.onBeat=true;
+  audio.beatAmp=Math.min(1,amp*(.5+audio.pace*.9));
+  audio.beatGlow=1;
   const iv=t-audio.lastBeat;
   if(iv>.24&&iv<2){
     audio.ivs.push(iv); if(audio.ivs.length>12)audio.ivs.shift();
@@ -381,50 +497,94 @@ function registerBeat(t,amp){
   }
   audio.lastBeat=t;
 }
+function conductor(t){
+  if(t<audio.evalAt)return;
+  audio.evalAt=t+3;
+  const scores=audio.bands.map(bd=>{
+    if(bd.sal<1e-4)return 0;
+    let reg=.3, plaus=.6;
+    if(bd.ivs.length>=3){
+      const m=bd.ivs.reduce((a,x)=>a+x,0)/bd.ivs.length;
+      const cv=Math.sqrt(bd.ivs.reduce((a,x)=>a+(x-m)*(x-m),0)/bd.ivs.length)/m;
+      reg=1/(1+cv*2);
+      const rate=1/m;
+      plaus=(rate>.3&&rate<5)?1:.5;
+    }
+    return bd.sal*(.4+.8*reg)*plaus;
+  });
+  let best=0; scores.forEach((s,i)=>{if(s>scores[best])best=i;});
+  if(best!==audio.lead&&scores[best]>scores[audio.lead]*1.3){
+    audio.lead=best;
+    toast(`Following ${audio.bands[best].name}`);
+  }
+  let sec=(audio.lead+1)%3;
+  audio.bands.forEach((_,i)=>{ if(i!==audio.lead&&scores[i]>scores[sec])sec=i; });
+  audio.second=sec;
+  followLabel();
+}
 let demoBeatIdx=-1;
-function updateAudio(t,sens){
+function updateAudio(t,dt,sens){
   audio.onBeat=false; audio.onShimmer=false;
   audio.beatGlow*=.92; audio.shimmer*=.88;
   if(audio.mode==='mic'&&audio.an){
     audio.an.getByteFrequencyData(audio.buf);
-    // spectral flux per region (positive spectral change only)
-    let fb=0,fm=0,ft=0;
+    // spectral flux per instrument band (positive change only)
+    const flux=[0,0,0];
     for(let i=1;i<220;i++){
       const d=audio.buf[i]-audio.prev[i];
-      if(d>0){ if(i<10)fb+=d; else if(i<60)fm+=d; else ft+=d; }
+      if(d>0){ if(i<10)flux[0]+=d; else if(i<60)flux[1]+=d; else flux[2]+=d; }
     }
     audio.prev.set(audio.buf);
-    fb/=9*255; ft/=160*255;
+    flux[0]/=9*255; flux[1]/=50*255; flux[2]/=160*255;
     const b=band(1,10), m=band(10,60), tr=band(60,220);
     // auto-gain: normalise against a slowly-decaying loudness peak
     const rawLev=b*.55+m*.3+tr*.15;
     audio.peak=Math.max(audio.peak*.9985,rawLev,.05);
     const agc=Math.min(6,.75/audio.peak)*sens;
-    audio.bass+=(Math.min(1,b*agc)-audio.bass)*.35;
-    audio.mid +=(Math.min(1,m*agc)-audio.mid)*.3;
-    audio.treb+=(Math.min(1,tr*agc)-audio.treb)*.3;
+    // slow songs smooth the envelopes; fast songs snap
+    const ease=.2+.22*audio.pace;
+    audio.bass+=(Math.min(1,b*agc)-audio.bass)*(ease+.1);
+    audio.mid +=(Math.min(1,m*agc)-audio.mid)*ease;
+    audio.treb+=(Math.min(1,tr*agc)-audio.treb)*ease;
     audio.level=Math.min(1,audio.bass*.55+audio.mid*.3+audio.treb*.15);
-    // adaptive onset threshold: mean + k*std of recent bass flux
-    audio.fluxHist.push(fb); if(audio.fluxHist.length>45)audio.fluxHist.shift();
-    const n=audio.fluxHist.length;
-    const mean=audio.fluxHist.reduce((a,x)=>a+x,0)/n;
-    const std=Math.sqrt(audio.fluxHist.reduce((a,x)=>a+(x-mean)*(x-mean),0)/n)||1e-4;
-    if(n>20&&fb>mean+1.5*std&&fb>.012&&t-audio.lastBeat>.24)
-      registerBeat(t,Math.min(1,.4+audio.bass));
+    // per-band onset detection with pace-scaled threshold:
+    // low pace -> more sensitive trigger; high pace -> only strong hits
+    const k=1.3+audio.pace*1.0, gate=audio.level>.07;
+    for(const bd of audio.bands){
+      bd.onset=false;
+      const f=flux[audio.bands.indexOf(bd)];
+      bd.hist.push(f); if(bd.hist.length>45)bd.hist.shift();
+      const n=bd.hist.length;
+      const mean=bd.hist.reduce((a,x)=>a+x,0)/n;
+      const std=Math.sqrt(bd.hist.reduce((a,x)=>a+(x-mean)*(x-mean),0)/n)||1e-4;
+      if(n>20&&gate&&f>mean+k*std&&f>bd.floor&&t-bd.lastOn>.18){
+        bd.onset=true;
+        bd.strength=Math.min(1,.4+(f-mean)/(std*4+1e-4)*.3);
+        const iv=t-bd.lastOn;
+        if(iv>.2&&iv<2.5){bd.ivs.push(iv); if(bd.ivs.length>8)bd.ivs.shift();}
+        bd.lastOn=t;
+        bd.sal+=(f-bd.sal)*.35;
+      }else bd.sal*=Math.pow(.985,dt*60);
+    }
+    conductor(t);
+    // major reaction: the lead instrument's beat
+    const lead=audio.bands[audio.lead];
+    if(lead.onset&&t-audio.lastBeat>.22)registerBeat(t,lead.strength);
     else if(audio.ivs.length>=4){
       // tempo grid: if the expected beat never surfaced, pulse softly on time
       const iv=60/audio.bpm;
       if(t-audio.lastBeat>iv*1.12&&audio.level>.12){
-        audio.onBeat=true; audio.beatAmp=.45*Math.min(1,audio.level*1.6);
-        audio.beatGlow=Math.max(audio.beatGlow,.6);
+        audio.onBeat=true;
+        audio.beatAmp=.4*Math.min(1,audio.level*1.6)*(.5+audio.pace*.9);
+        audio.beatGlow=Math.max(audio.beatGlow,.55);
         audio.lastBeat+=iv;     // stay phase-locked, don't retime the grid
       }
     }
-    // treble onsets -> shimmer accents
-    audio.trebHist.push(ft); if(audio.trebHist.length>45)audio.trebHist.shift();
-    const tm=audio.trebHist.reduce((a,x)=>a+x,0)/audio.trebHist.length;
-    if(audio.trebHist.length>20&&ft>tm*1.7&&ft>.01&&t-audio.lastShim>.12){
-      audio.shimmer=1; audio.onShimmer=true; audio.lastShim=t;
+    // minor reaction: the runner-up instrument only accents
+    const sec=audio.bands[audio.second];
+    if(sec.onset&&t-audio.lastShim>.15&&t-audio.lastBeat>.06){
+      audio.shimmer=Math.min(1,.5+sec.strength*.5);
+      audio.onShimmer=true; audio.lastShim=t;
     }
   }else{
     const bpm=118, ph=t*bpm/60, idx=Math.floor(ph);
@@ -674,7 +834,7 @@ const mRings={
                           amp:Math.min(W,H)*(.03+.06*audio.beatAmp*(0.4+pace)),
                           w:.6-pace*.35,life:1});
     }
-    if(audio.onShimmer) // treble accents nick the rims
+    if(audio.onShimmer) // minor-instrument accents nick the rims
       this.spikes.push({ring:Math.floor(rnd()*this.rings.length),ang:rnd()*Math.PI*2,
                         amp:Math.min(W,H)*.02,w:.18,life:.7});
     for(let i=this.spikes.length-1;i>=0;i--){
@@ -768,7 +928,134 @@ const mMeteors={
   },
 };
 
-const MODES=[mParticles,mWaves,mRings,mMeteors];
+/* =============== mode: fireflies =============== */
+const mFlies={
+  name:'Fireflies', hint:'tap to scatter · drag to lead the swarm',
+  F:[], sync:0,
+  count(){ return Math.round((16+density*64)*perf.q); },
+  make(){
+    const [y0,y1]=zoneY();
+    return {x:rnd()*W,y:y0+rnd()*(y1-y0),vx:0,vy:0,f:rnd(),
+            ph:rnd()*7,bl:rnd()*7,flare:0};
+  },
+  reset(){ this.F.length=0; this.sync=0;
+    for(let i=0,n=this.count();i<n;i++)this.F.push(this.make()); },
+  tap(x,y){ // startle the swarm near the tap
+    for(const fl of this.F){
+      const dx=fl.x-x, dy=fl.y-y, d=Math.hypot(dx,dy);
+      if(d<150){const k=(1-d/150)*4.2/(d||1); fl.vx+=dx*k; fl.vy+=dy*k; fl.flare=1;}
+    }
+  },
+  drag(x,y,dx,dy){ // the swarm is drawn toward a slow-moving finger
+    for(const fl of this.F){
+      const dxx=x-fl.x, dyy=y-fl.y, d=Math.hypot(dxx,dyy);
+      if(d<170&&d>8){const k=.045*(1-d/170); fl.vx+=dxx*k; fl.vy+=dyy*k;}
+    }
+  },
+  step(dt,t){
+    const [y0,y1]=zoneY(), pace=audio.pace;
+    const n=this.count();
+    while(this.F.length<n)this.F.push(this.make());
+    this.F.length=Math.min(this.F.length,n);
+    this.sync*=.94;
+    if(audio.onBeat)this.sync=Math.max(this.sync,audio.beatAmp); // swarm blinks together
+    if(audio.onShimmer)
+      for(let i=0;i<2;i++)this.F[Math.floor(rnd()*this.F.length)].flare=1;
+    const wander=.04*(0.5+pace*.8);
+    for(const fl of this.F){
+      fl.vx+=Math.sin(t*.9+fl.ph)*wander+Math.sin(fl.y*.01+t*.4)*wander
+             +(flow*.25-fl.vx)*.01;
+      fl.vy+=Math.cos(t*.8+fl.ph*1.3)*wander;
+      if(fl.y<y0)fl.vy+=(y0-fl.y)*.002;
+      if(fl.y>y1)fl.vy-=(fl.y-y1)*.002;
+      fl.vx*=.96; fl.vy*=.96;
+      fl.x+=fl.vx*dt*60; fl.y+=fl.vy*dt*60;
+      if(fl.x<-14)fl.x=W+14; if(fl.x>W+14)fl.x=-14;
+      fl.flare*=.9;
+    }
+  },
+  draw(t){
+    const halo=glowOK();
+    for(const fl of this.F){
+      const blink=.3+.7*(.5+.5*Math.sin(t*(1.6+audio.pace)+fl.bl));
+      const b=Math.min(1,Math.max(blink,this.sync,fl.flare));
+      const r=(1.3+b*1.6)*zoom;
+      if(halo){
+        ctx.fillStyle=colorAt(fl.f,t,.14*b);
+        ctx.beginPath(); ctx.arc(fl.x,fl.y,r*4,0,7); ctx.fill();
+      }
+      ctx.fillStyle=colorAt(fl.f,t,.25+.75*b);
+      ctx.beginPath(); ctx.arc(fl.x,fl.y,r,0,7); ctx.fill();
+    }
+  },
+};
+
+/* =============== mode: petals =============== */
+const mPetals={
+  name:'Petals', hint:'tap for a gust · drag to steer the wind',
+  P:[],
+  count(){ return Math.round((14+density*50)*perf.q); },
+  make(fresh){
+    return {x:rnd()*W, y:fresh?-20-rnd()*40:rnd()*H,
+            vx:0,vy:0,f:rnd(),sz:2.6+rnd()*2.6,
+            rot:rnd()*7,vr:(rnd()-.5)*2,sway:rnd()*7,spark:0};
+  },
+  reset(){ this.P.length=0;
+    for(let i=0,n=this.count();i<n;i++)this.P.push(this.make(false)); },
+  tap(x,y){ // a gust bursts out from the tap
+    for(const p of this.P){
+      const dx=p.x-x, dy=p.y-y, d=Math.hypot(dx,dy);
+      if(d<160){const k=(1-d/160)*5/(d||1);
+        p.vx+=dx*k; p.vy+=dy*k-1.4*(1-d/160); p.vr+=(rnd()-.5)*8;}
+    }
+  },
+  drag(x,y,dx,dy){ // steer the wind through the petals
+    for(const p of this.P){
+      const d=Math.hypot(p.x-x,p.y-y);
+      if(d<140){const k=(1-d/140)*.25; p.vx+=dx*k; p.vy+=dy*k; p.vr+=dx*.01;}
+    }
+  },
+  step(dt,t){
+    const pace=audio.pace;
+    const n=this.count();
+    while(this.P.length<n)this.P.push(this.make(true));
+    this.P.length=Math.min(this.P.length,n);
+    if(audio.onBeat){ // beat = a gust rolls through
+      const g=audio.beatAmp*(28+pace*70);
+      for(const p of this.P){ p.vx+=flow*g*(.5+rnd()); p.vr+=(rnd()-.5)*4*audio.beatAmp; }
+    }
+    if(audio.onShimmer)
+      for(let i=0;i<3;i++)this.P[Math.floor(rnd()*this.P.length)].spark=1;
+    const fall=(16+pace*16), breeze=flow*(14+pace*36+audio.level*30);
+    for(const p of this.P){
+      p.vx+=(breeze+Math.sin(t*.8+p.sway)*12-p.vx)*.02;
+      p.vy+=(fall+Math.sin(t*1.3+p.sway*2)*6-p.vy)*.03;
+      p.x+=p.vx*dt; p.y+=p.vy*dt;
+      p.rot+=(p.vr+audio.level*1.2)*dt;
+      p.vr*=.985; p.spark*=.92;
+      if(p.y>H+24){ Object.assign(p,this.make(true)); }
+      if(p.x<-24)p.x=W+24; if(p.x>W+24)p.x=-24;
+    }
+  },
+  draw(t){
+    const halo=glowOK();
+    for(const p of this.P){
+      const a=.55+.45*Math.min(1,p.spark+audio.beatGlow*.4);
+      ctx.save();
+      ctx.translate(p.x,p.y); ctx.rotate(p.rot);
+      const s=p.sz*zoom*(1+audio.bass*.35);
+      if(halo&&p.spark>.2){
+        ctx.fillStyle=colorAt(p.f,t,.2*p.spark);
+        ctx.beginPath(); ctx.ellipse(0,0,s*2.4,s*1.5,0,0,7); ctx.fill();
+      }
+      ctx.fillStyle=colorAt(p.f,t,a);
+      ctx.beginPath(); ctx.ellipse(0,0,s,s*.55,0,0,7); ctx.fill();
+      ctx.restore();
+    }
+  },
+};
+
+const MODES=[mParticles,mWaves,mRings,mMeteors,mFlies,mPetals];
 let mode=mParticles;
 function setMode(m){ mode=m; mode.reset(); $('#hint').textContent=m.hint; }
 
@@ -807,7 +1094,7 @@ let last=performance.now();
 function frame(now){
   const t=now/1000, dt=Math.min(.05,(now-last)/1000); last=now;
   tickPerf(dt);
-  updateAudio(t,$('#sens').value/100);
+  updateAudio(t,dt,$('#sens').value/100);
   mode.step(dt,t);
   ctx.clearRect(0,0,W,H);
   if(scen.ambient)scen.ambient(ctx,t,W,H);
@@ -818,8 +1105,9 @@ function frame(now){
 }
 
 /* =============== gestures ===============
-   tap = mode interaction; slow drag = stir/pull/spin/sweep;
-   fast horizontal flick = flip flow direction; two fingers = pinch zoom. */
+   tap = mode interaction; slow drag = stir/pull/spin/sweep/lead/steer;
+   fast horizontal flick = flip flow direction; two fingers = pinch zoom.
+   every interaction answers with a small haptic tick. */
 const ptrs=new Map();
 let pinch=null;
 cv.addEventListener('pointerdown',e=>{
@@ -839,23 +1127,24 @@ cv.addEventListener('pointermove',e=>{
   if(pinch&&ptrs.size===2){
     const [a,b]=[...ptrs.values()];
     zoom=Math.min(1.8,Math.max(.5,pinch.z0*Math.hypot(a.x-b.x,a.y-b.y)/pinch.d0));
+    buzz(3);
     return;
   }
-  if(p.moved)mode.drag&&mode.drag(p.x,p.y,dx,dy);
+  if(p.moved&&mode.drag){ mode.drag(p.x,p.y,dx,dy); buzz(4); }
 });
 function endPtr(e){
   const p=ptrs.get(e.pointerId); if(!p)return;
   ptrs.delete(e.pointerId);
-  if(pinch){ if(ptrs.size<2){pinch=null; saveState();} return; }
+  if(pinch){ if(ptrs.size<2){pinch=null; buzz(6); saveState();} return; }
   const dt=(performance.now()-p.t0)/1000, tx=p.x-p.x0, ty=p.y-p.y0;
   if(!p.moved&&dt<.4){
     mode.tap(p.x,p.y);
-    if(navigator.vibrate)try{navigator.vibrate(8);}catch(_){}
+    buzz(10);
   }else if(dt<.3&&Math.abs(tx)>80&&Math.abs(tx)>2.2*Math.abs(ty)){
     const nf=tx>0?1:-1;
     if(nf!==flow){
       flow=nf; syncRow($('#flowRow'),flow>0?0:1);
-      toast(flow>0?'Flow →':'← Flow'); saveState();
+      toast(flow>0?'Flow →':'← Flow'); buzz([10,40,10]); saveState();
     }
   }
 }
@@ -863,8 +1152,9 @@ cv.addEventListener('pointerup',endPtr);
 cv.addEventListener('pointercancel',endPtr);
 
 /* =============== UI wiring =============== */
-$('#gearBtn').addEventListener('click',()=>$('#sheet').classList.toggle('hidden'));
+$('#gearBtn').addEventListener('click',()=>{ buzz(6); $('#sheet').classList.toggle('hidden'); });
 $('#fsBtn').addEventListener('click',async()=>{
+  buzz(6);
   try{
     if(document.fullscreenElement)await document.exitFullscreen();
     else await document.documentElement.requestFullscreen();
@@ -873,6 +1163,7 @@ $('#fsBtn').addEventListener('click',async()=>{
 function chipRow(rowEl,onPick){
   rowEl.addEventListener('click',e=>{
     const c=e.target.closest('.chip,.swatch'); if(!c)return;
+    buzz(6);
     Promise.resolve(onPick(c)).then(ok=>{
       if(ok===false)return;
       for(const x of rowEl.children)x.classList.toggle('on',x===c);
@@ -882,7 +1173,7 @@ function chipRow(rowEl,onPick){
 }
 chipRow($('#srcRow'),async c=>{
   if(c.dataset.src==='mic')return startMic();
-  audio.mode='demo'; return true;
+  audio.mode='demo'; followLabel(); return true;
 });
 chipRow($('#flowRow'),c=>{ flow=+c.dataset.flow; return true; });
 
@@ -945,6 +1236,7 @@ resize();
   const m=MODES[s.mode]||mParticles;
   setMode(m); syncRow(modeRow,MODES.indexOf(m));
 })();
+followLabel();
 requestAnimationFrame(frame);
 </script>
 </body>
