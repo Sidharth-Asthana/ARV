@@ -2,7 +2,7 @@ import { S, save, cfgOf, setCfg } from '../state.js';
 import { PALETTES } from '../color/palettes.js';
 import { SCENERIES } from '../scenery/index.js';
 import { MODES } from '../modes/index.js';
-import { audio, startMic, startTab, stopCapture, tabCaptureSupported } from '../audio/engine.js';
+import { audio, startMic, startTab, stopCapture, tabCaptureSupported, listInputs } from '../audio/engine.js';
 import { buzz } from './haptics.js';
 
 const $ = s => document.querySelector(s);
@@ -49,10 +49,40 @@ export function initPanel(api) {
   }
   chipRow(srcRow, async c => {
     const k = c.dataset.src;
-    if (k === 'mic') return startMic();
+    if (k === 'mic') {
+      const ok = await startMic(S.micId);
+      if (ok) refreshMicList();
+      return ok;
+    }
     if (k === 'tab') return startTab();
     stopCapture(); api.followChanged(); return true;
   });
+
+  /* input device dropdown: appears once mic permission reveals labels,
+     so Stereo Mix / loopback devices can be picked in-app */
+  const micSel = $('#micSel');
+  async function refreshMicList() {
+    const inputs = await listInputs();
+    const labeled = inputs.filter(d => d.id);
+    if (labeled.length < 2) { micSel.hidden = true; return; }
+    micSel.innerHTML = '';
+    for (const d of labeled) {
+      const o = document.createElement('option');
+      o.value = d.id; o.textContent = d.label;
+      micSel.appendChild(o);
+    }
+    if (S.micId && [...micSel.options].some(o => o.value === S.micId))
+      micSel.value = S.micId;
+    micSel.hidden = false;
+  }
+  micSel.addEventListener('change', async () => {
+    S.micId = micSel.value; save();
+    if (audio.mode === 'mic') await startMic(S.micId);
+  });
+  if (navigator.mediaDevices && navigator.mediaDevices.addEventListener)
+    navigator.mediaDevices.addEventListener('devicechange', () => {
+      if (!micSel.hidden || audio.mode === 'mic') refreshMicList();
+    });
 
   /* flow + palettes */
   chipRow($('#flowRow'), c => { S.flow = +c.dataset.flow; return true; });

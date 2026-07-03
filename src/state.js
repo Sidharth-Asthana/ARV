@@ -6,6 +6,8 @@ export const S = {
   sens: 1,            // sensitivity multiplier
   palIdx: 0, palManual: false,
   scenIdx: 0, modeIdx: 0,
+  micId: '',          // preferred audio input device
+
   modeCfg: {},        // per-mode slider values: { modeName: { key: value } }
   lightScene: false,
   q: 1,               // perf quality 0.4..1
@@ -19,7 +21,7 @@ export function save() {
       flow: S.flow, zoom: S.zoom, sens: S.sens,
       palIdx: S.palIdx, palManual: S.palManual,
       scenIdx: S.scenIdx, modeIdx: S.modeIdx,
-      modeCfg: S.modeCfg,
+      micId: S.micId, modeCfg: S.modeCfg,
     }));
   } catch (_) {}
 }
@@ -34,6 +36,7 @@ export function load() {
     S.palManual = !!s.palManual;
     if (s.scenIdx != null) S.scenIdx = s.scenIdx;
     if (s.modeIdx != null) S.modeIdx = s.modeIdx;
+    if (s.micId != null) S.micId = s.micId;
     if (s.modeCfg) S.modeCfg = s.modeCfg;
   } catch (_) {}
 }
