@@ -2,7 +2,7 @@
    HTML is served network-first so new releases always land on the next
    visit; the cache is only the offline fallback. Static assets are
    served cache-first with a background refresh. */
-const CACHE = 'arviz-v3';
+const CACHE = 'arviz-v4';
 const ASSETS = [
   './',
   './index.html',

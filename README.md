@@ -1,76 +1,94 @@
 # ARV · ARviz
 
-A mobile-first, audio-reactive music visualizer that lives in a single HTML file.
-Open it in a phone browser, let it listen to whatever is playing out loud (YouTube
-Music, a speaker, a live room), and watch six different visualizations move with
-the song — or install it to your home screen and use it like a native app.
+A mobile-first, audio-reactive music visualizer. Open it in a phone or laptop
+browser, let it listen to whatever is playing (microphone — or lossless
+browser-tab capture on desktop), and watch ten WebGL-rendered visualizations
+move with the song. Install it to your home screen and it behaves like a
+native app.
 
 **Live app:** https://sidharth-asthana.github.io/ARV/
 
 ## Features
 
-- **Six visualization modes**, each with its own audio reaction and touch behavior:
+- **Ten visualization modes**, each paired to a scenery as its default but all
+  freely interchangeable, and each with its own settings sliders (stored
+  separately per mode):
 
-  | Mode | Reacts to the beat by… | Tap | Drag |
+  | Mode | Default scenery | Beat reaction | Touch |
   |---|---|---|---|
-  | Particles | jolting a cluster of particles | burst + shockwave ring | stir the field |
-  | Waves | surging crests along the lines | send a ripple (real wave physics) | pull the lines |
-  | Rings | spiking the circumference, breathing radii | spike the nearest ring | spin the stack |
-  | Meteors | launching a volley of streaks | meteor cluster | sweep a trail |
-  | Fireflies | blinking the whole swarm in sync | scatter the swarm | lead the swarm |
-  | Petals | rolling a gust through the blossoms | gust outward | steer the wind |
+  | Particles | Night Peaks | a cluster gets jolted | tap bursts · drag stirs |
+  | Waves | Moonlit Sea | crests surge (real wave physics) | tap/drag ripples |
+  | Rings | Desert Dusk | circumference spikes, radii breathe | tap spikes · drag spins |
+  | Ribbons | Aurora Pines | the silk billows | tap ripples · drag bends |
+  | Equalizer | City Nights | spectrum towers pulse | tap/drag excites bars |
+  | Tendrils | Forest Glade | growth branches | tap plants · drag guides |
+  | Petals | Sakura Dusk | a gust rolls through | tap gusts · drag steers |
+  | Ripples | Rainfall | beats land as rain rings | tap splashes · drag trails |
+  | Lanterns | Morning Mist | lanterns surge upward | tap releases · drag breezes |
+  | Galaxy | Nebula | core flash + spin kick | tap pulses gravity · drag spins |
 
-- **Nine scenery backgrounds** — Night Peaks, Moonlit Sea, Desert Dusk, Aurora
-  Pines, City Nights, Forest Glade, Sakura Dusk, Rainfall, Morning Mist — each a
-  painted scene with a subtle living layer (twinkling stars, shooting stars,
-  drifting aurora, rain, fog, flickering windows) and its own default palette.
-  The visualization anchors to each scene's sky, sea, or glade.
-- **Instrument-following audio engine.** Onset detection runs separately on
-  drums (low band), keys/strums (mid), and percussion (high). A conductor scores
-  each for loudness and rhythmic regularity and elects a *lead instrument* whose
-  beat drives the major reactions; the runner-up only adds minor accents. A
-  readout in the settings sheet shows the current choice and BPM.
-- **Tempo-adaptive feel.** Slow songs lower the onset threshold (soft piano
-  strokes register) and soften every reaction; fast songs demand hard hits and
-  jolt sharper. Auto-gain keeps quiet rooms and loud speakers comparable.
-- **Color cycles** (Aurora, Ember, Ocean, Candy, Spectrum): each scheme drifts
-  smoothly through an explicit color list, and the settings chips are built from
-  the exact same colors.
-- **Gestures:** tap to interact, slow drag to steer, fast horizontal flick to
+- **WebGL2 renderer**: instanced primitives (tens of thousands of glowing
+  points), real bloom post-processing, and motion-trail persistence buffers —
+  with an automatic Canvas2D fallback for devices without WebGL2.
+- **Ten painted sceneries** with faint living ambient layers (twinkling stars,
+  shooting stars, drifting aurora, rain, fog, flickering windows), each
+  bringing its own default palette and mode.
+- **Beat-phase audio engine**: 24 mel-spaced bands, autocorrelation tempo
+  tracking with next-beat prediction (visuals subtly anticipate the beat),
+  per-instrument onset detection (drums / keys / percussion) with a conductor
+  that follows the song's lead instrument, auto-gain, and tempo-adaptive
+  reaction intensity — slow songs respond softly and often, fast songs jolt
+  hard on real hits.
+- **Audio sources**: synthetic demo beat, microphone, and — on desktop —
+  **tab capture** (`getDisplayMedia`), which syncs losslessly to the audio of
+  a chosen browser tab, e.g. YouTube Music.
+- **Gestures**: tap to interact, slow drag to steer, fast horizontal flick to
   reverse the flow direction, two-finger pinch to zoom — all with haptic ticks.
-- **PWA:** installable, fullscreen, works offline after the first visit.
-- Settings persist between launches; an adaptive performance governor keeps
-  older phones smooth; a wake lock keeps the screen on while visualizing.
+- **Keyboard** (desktop): `F` fullscreen · `Space`/`H` panel · `←/→` scenery ·
+  `↑/↓` mode · `1–5` palettes · `R` reverse flow.
+- **PWA**: installable, fullscreen, offline app shell; settings persist;
+  adaptive quality governor; screen wake lock.
 
 ## Using it
 
-1. Open the live app (or `ARviz.html` directly) in Chrome/Safari on your phone.
-2. It starts on a built-in demo beat. Tap **Listen (mic)** and allow microphone
-   access, then play music out loud — the visualizer follows what it hears.
-3. The round button at the top right hides/shows the translucent settings sheet;
-   the other toggles fullscreen.
-4. To install: browser menu → **Add to Home Screen** / **Install app**. The
-   installed app launches fullscreen with its own icon.
+1. Open the live app on your phone or laptop.
+2. It starts on a built-in demo beat. Tap **Listen (mic)** (or **Capture tab**
+   on desktop) to follow real music.
+3. The top-right buttons toggle fullscreen and the translucent settings sheet.
+4. Install: browser menu → **Add to Home Screen** / **Install app**.
 
-> **Why the microphone?** No mobile API lets a web page read audio playing in
-> another app — Android and iOS sandbox app audio completely. Listening through
-> the mic is how every mobile visualizer syncs to your music.
+> **Why the microphone on mobile?** No mobile API lets a web page read audio
+> playing in another app. Desktop browsers can capture a tab's audio, which is
+> why the tab-capture source only appears there.
 
 ## Development
 
-Everything is a single dependency-free file — `ARviz.html` (Canvas 2D + Web
-Audio). `sw.js`, `manifest.webmanifest`, and `icons/` are the PWA shell;
-`index.html` just redirects the site root into the app.
-
-To work on it locally, serve the folder over HTTP (the service worker and mic
-need a secure context; `file://` works for everything except the service
-worker):
-
-```bash
-python3 -m http.server 8000
-# open http://localhost:8000/ARviz.html
+```
+src/
+  main.js            app wiring + render loop
+  state.js           global state + persistence (incl. per-mode configs)
+  audio/engine.js    mel bands, tempo/phase tracking, conductor, sources
+  render/painter-gl.js   WebGL2 instanced renderer, trails, bloom
+  render/painter-2d.js   Canvas2D fallback (same painter API)
+  color/palettes.js  exact-color cycling schemes
+  scenery/           10 painted scenes + living ambient layers
+  modes/             10 visualization modes (one file each)
+  ui/                panel, gestures, keyboard, haptics, toast
+public/              PWA shell: sw.js, manifest, icons, root redirect
 ```
 
-Deploys are automatic: anything merged to `main` goes live on GitHub Pages.
-HTML is served network-first by the service worker, so a new release reaches
-devices on their next online visit.
+```bash
+npm install
+npm run dev      # hot-reload dev server
+npm run build    # emits a single self-contained dist/ARviz.html + PWA shell
+```
+
+Modes implement `{ name, hint, params, reset, step, draw, tap, drag }` against
+the painter API (`dot / disc / seg / poly / ring`), so a new mode is one small
+file registered in `modes/index.js`. Sceneries implement
+`{ draw, ambient, z0, z1, fx, fy, defPal, defMode }` in `scenery/index.js`.
+
+Deploys are automatic: GitHub Actions builds `dist/` and publishes it to
+GitHub Pages on every merge to `main` (repo Settings → Pages → Source:
+**GitHub Actions**). The service worker serves HTML network-first, so new
+releases reach devices on their next online visit.
