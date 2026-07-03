@@ -80,18 +80,40 @@ async function attachStream(stream, label) {
   for (const g of audio.gb) { g.hist.length = 0; g.ivs.length = 0; g.sal = 0; g.lastOn = -9; }
 }
 
-export async function startMic() {
+export async function startMic(deviceId) {
+  const constraints = id => ({
+    audio: {
+      echoCancellation: false, noiseSuppression: false,
+      ...(id ? { deviceId: { exact: id } } : {}),
+    },
+  });
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: false, noiseSuppression: false },
-    });
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia(constraints(deviceId));
+    } catch (e) {
+      if (!deviceId) throw e;
+      // saved device unplugged/renamed: fall back to the default input
+      stream = await navigator.mediaDevices.getUserMedia(constraints(null));
+      toast('Saved input unavailable — using default microphone');
+    }
     await attachStream(stream, 'mic');
-    toast('Listening — play music out loud nearby');
+    const label = stream.getAudioTracks()[0]?.label;
+    toast(label ? `Listening via ${label}` : 'Listening — play music out loud nearby');
     return true;
   } catch (e) {
     toast('Microphone not available — demo beat continues');
     return false;
   }
+}
+
+/* labeled audio inputs (labels appear once mic permission is granted) */
+export async function listInputs() {
+  try {
+    const ds = await navigator.mediaDevices.enumerateDevices();
+    return ds.filter(d => d.kind === 'audioinput')
+             .map(d => ({ id: d.deviceId, label: d.label || 'Microphone' }));
+  } catch (e) { return []; }
 }
 
 /* desktop only: capture the audio of a chosen browser tab (lossless sync) */
