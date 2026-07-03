@@ -1,7 +1,7 @@
 {
   "name": "ARviz — Audio Visualizer",
   "short_name": "ARviz",
-  "description": "Audio-reactive visualizer with scenic backgrounds, four modes, and touch interactions.",
+  "description": "Audio-reactive visualizer: ten WebGL scenes and modes that move with your music.",
   "start_url": "./ARviz.html",
   "scope": "./",
   "display": "fullscreen",
@@ -11,6 +11,6 @@
   "icons": [
     { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }
