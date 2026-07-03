@@ -2,7 +2,7 @@
    HTML is served network-first so new releases always land on the next
    visit; the cache is only the offline fallback. Static assets are
    served cache-first with a background refresh. */
-const CACHE = 'arviz-v4';
+const CACHE = 'arviz-v5';
 const ASSETS = [
   './',
   './index.html',
@@ -10,6 +10,7 @@ const ASSETS = [
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/icon-512.png',
+  './icons/icon-maskable-512.png',
 ];
 
 self.addEventListener('install', e => {
