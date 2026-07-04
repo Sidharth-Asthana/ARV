@@ -220,10 +220,8 @@ function conductor(t) {
     return g.sal * (.4 + .8 * reg) * plaus;
   });
   let best = 0; scores.forEach((s, i) => { if (s > scores[best]) best = i; });
-  if (best !== audio.lead && scores[best] > scores[audio.lead] * 1.3) {
-    audio.lead = best;
-    toast(`Following ${audio.gb[best].name}`);
-  }
+  if (best !== audio.lead && scores[best] > scores[audio.lead] * 1.3)
+    audio.lead = best;   // shown only in the panel's follow readout, no toast
   let sec = (audio.lead + 1) % 3;
   audio.gb.forEach((_, i) => { if (i !== audio.lead && scores[i] > scores[sec]) sec = i; });
   audio.second = sec;
